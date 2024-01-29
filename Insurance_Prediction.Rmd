@@ -1,0 +1,441 @@
+---
+title: "personal_assignment"
+output: html_document
+date: "2023-06-15"
+---
+
+I want to find out the relationship between independent variables such as age, sex, bmi, children, smoker, and region and the dependent variable called charges(insurance premium), find out what factors have the greatest impact on insurance premium(charges), and establish a linear model to predict insurance premium for each variable.
+
+
+Main research question : Which variable will have the greatest impact on insurance premiums?
+
+Sub question : 
+1. Each visualizes the relationship between age, sex, bmi, children, smoker, and charges, and confirms the relationship.
+2. see the distribution of data with insurance premiums of top 1%
+3. confirm the overall trend with x variables that are highly correlated with charges and make a model.
+4. If there is a variable affecting the result, remove the influence of the variable and model it again.
+5. It goes through the process of establishing null and alternative hypotheses and validating it.
+6. Finally, it checks which variables have the greatest influence on the charges in which situation.
+
+
+```{r}
+library(tidyverse)
+library(dbplyr)
+library(GGally)
+library(heatmaply)
+library(gapminder)
+library(modelr)
+library(splines)
+options(na.action = na.warn)
+library(lubridate)
+library(moderndive)
+library(skimr)
+library(readxl)
+```
+
+```{r}
+library(corrplot)
+```
+
+
+```{r}
+insurance <- as_tibble(read.csv("insurance.csv"))
+insurance
+```
+
+```{r}
+insurance_corr <- insurance %>% 
+  select(-sex, -smoker, -region)
+
+library(corrplot)
+corrplot(cor(insurance_corr), method = "color")
+  
+```
+The darker the color, the higher the correlation. Except for self-data, age and charges have the highest correlation, and secondly, bmi and charges have the high correlation.
+
+
+```{r}
+insurance %>% 
+  group_by(smoker) %>%
+  summarise(avgage = mean(age))
+```
+
+```{r}
+ggplot(data = insurance) +
+  geom_point(mapping = aes(x = age , y = charges))
+```
+```{r}
+insurance %>% get_correlation(formula = charges ~ age)
+```
+
+The positive sign indicates a positive correlation. In other words, as the age goes up, the price comes up and vice versa. The coefficient of 0.299 indicates a weakly positive correlation.
+
+```{r}
+insurance %>% 
+  group_by(age) %>%
+  summarise(avgcharges = mean(charges)) %>%
+  ggplot(aes(age, avgcharges)) +
+  geom_point()
+```
+
+```{r}
+ggplot(data = insurance, mapping = aes(x = sex , y = charges) ) +
+  geom_boxplot()
+```
+
+```{r}
+insurance %>% 
+  group_by(smoker) %>%
+  summarise(avgbmi = mean(bmi))
+```
+
+```{r}
+ggplot(data = insurance) +
+  geom_point(mapping = aes(x = bmi , y = charges ))
+```
+```{r}
+insurance %>% get_correlation(formula = charges ~ bmi)
+```
+
+The positive sign indicates a positive correlation. In other words, as the bmi goes up, the price comes up and vice versa. The coefficient of 0.198 indicates a weakly positive correlation.
+
+
+```{r}
+insurance %>% 
+  group_by(bmi) %>%
+  summarise(avgcharges = mean(charges)) %>%
+  ggplot(aes(bmi, avgcharges)) +
+  geom_point()
+```
+
+```{r}
+ggplot(data = insurance) +
+  geom_point(mapping = aes(x = children , y = charges))
+```
+
+```{r}
+ggplot(data = insurance) +
+  geom_point(mapping = aes(x = smoker , y = charges ))
+```
+
+Looking at the relationship between the x and y variables, respectively, it is concluded that it would be appropriate to create a model with a linear relationship that predicts insurance premiums using age and bmi as x variables. Now I'll try to look at each of the two variables in more detail.
+
+```{r}
+# Process missing values
+insurance <- insurance %>%
+  filter(!is.na(age) & !is.na(bmi) & !is.na(charges))
+```
+
+```{r}
+# I want to see the distribution of data with insurance premiums of top 1% 
+
+insurance %>% 
+  filter(percent_rank(charges) > 0.99) %>%
+  arrange(age, bmi)
+```
+
+```{r}
+insurance %>% 
+  filter(percent_rank(charges) > 0.99) %>%
+  arrange(age, bmi) %>%
+  mutate(nextcharges = lead(charges))
+```
+
+```{r}
+insurance %>% 
+  filter(percent_rank(charges) > 0.99) %>%
+  arrange(age, bmi) %>%
+  mutate(nextcharges = lag(charges))
+```
+
+```{r}
+# overall trend
+ggplot(data = insurance) +
+  geom_smooth(mapping = aes(x= age, y = charges))
+# When looking at the overall trend, it can be seen that there is a linear relationship.
+```
+
+```{r}
+# overall trend
+ggplot(data = insurance) +
+  geom_smooth(mapping = aes(x= bmi, y = charges))
+# Looking at the overall trend, it can be seen that although it is not a clear linear relationship than when x is age, it still shows a relatively linear relationship.
+```
+
+```{r}
+# creating model
+mod1 <- lm(charges ~ age, data = insurance)
+grid1 <- insurance %>%
+  data_grid(age)
+
+grid1 <- grid1 %>%
+  add_predictions(mod1)
+
+ggplot(data = insurance) +
+  geom_point(aes(x = age, y = charges))+
+  geom_line(aes(x = age, y = pred), data = grid1, colour = "red", size = 1)
+
+```
+
+```{r}
+# creating model
+mod2 <- lm(charges ~ bmi, data = insurance)
+grid2 <- insurance %>%
+  data_grid(bmi)
+
+grid2 <- grid2 %>%
+  add_predictions(mod2)
+
+ggplot(data = insurance) +
+  geom_point(aes(x = bmi, y = charges))+
+  geom_line(aes(x = bmi, y = pred), data = grid2, colour = "red", size = 1)
+```
+
+Each shows a roughly linear relationship, but in both variables, the slope is not large and the data is divided. In addition to these two x variables, it was thought that there were variables affecting the charges. Since the value of the smoker among the x variables is directly related to health, it is likely to have a direct effect on insurance premiums, so I will consider this variable and visualize it.
+
+```{r}
+ggplot(data = insurance) +
+  geom_point(mapping = aes(x = age, y = charges))+
+  facet_wrap(vars(smoker))
+```
+
+```{r}
+ggplot(data = insurance) +
+  geom_point(mapping = aes(x = bmi, y = charges))+
+  facet_wrap(vars(smoker))
+```
+
+
+```{r}
+ggplot(data = insurance, aes(x=age, y=charges, colour = smoker)) +
+  geom_point()+
+  geom_smooth(se = FALSE)
+
+# In this way, it can be confirmed that people who are smoker have to pay much higher premiums than people who are not smoker.
+```
+
+```{r}
+ggplot(data = insurance, aes(x=bmi, y=charges, colour = smoker)) +
+  geom_point()+
+  geom_smooth(se = FALSE)
+
+# Similarly, even when x is bmi, whether or not it is smoker has a great influence on charges.
+```
+```{r}
+#multiple linear regression
+insurance %>% ggplot(aes(x = age, y = charges, color = smoker)) +
+  geom_point() +
+  geom_parallel_slopes(se = FALSE)
+
+age_model_parallel_slopes <- lm(charges ~ age, data = insurance)
+age_model_parallel_slopes %>% get_regression_table()
+```
+
+b0 = 3165.885, b1 = 257.723
+$\widehat{charges} = 3165.885 + 257.723 . age$
+The slope b1 = 257.723 suggests a positive relationship between the age and insurance premiums(charges), meaning as the age increases, the charges increases. 
+
+The intercept is the expected mean value of charges.
+
+
+```{r}
+#multiple linear regression
+insurance %>% ggplot(aes(x = bmi, y = charges, color = smoker)) +
+  geom_point() +
+  geom_parallel_slopes(se = FALSE)
+
+bmi_model_parallel_slopes <- lm(charges ~ bmi, data = insurance)
+bmi_model_parallel_slopes %>% get_regression_table()
+```
+
+b0 = 1192.937, b1 = 393.873
+$\widehat{charges} = 1192.937 + 393.873 . age$
+The slope b1 = 383.873 suggests a positive relationship between the bmi and insurance premiums(charges), meaning as the bmi increases, the charges increases. 
+
+The intercept is the expected mean value of charges.
+
+
+```{r}
+#interaction model
+
+model_interaction <- lm(charges ~ age * bmi, data = insurance)
+model_interaction %>% get_regression_table()
+```
+$\widehat{charges} = -9162.555 + 313.657 . age + 422.247 . bmi - 2.321.age.bmi$
+
+
+```{r}
+# After removing the strong smoker effect, I will look at each relationship again.
+
+insurance <- insurance %>%
+  add_residuals(mod1)
+
+insurance %>%
+  ggplot(aes(age, resid)) +
+  geom_point()
+```
+
+```{r}
+# After removing the strong smoker effect, I will look at each relationship again.
+
+insurance <- insurance %>%
+  add_residuals(mod2)
+
+insurance %>%
+  ggplot(aes(bmi, resid)) +
+  geom_point()
+```
+
+```{r}
+# I will set up a prediction model for each according to whether it is a smoker or not.
+
+y_smoker <- insurance %>%
+  filter(smoker == 'yes') # if smoker
+
+n_smoker <- insurance %>%
+  filter(smoker == 'no') # if non-smoker
+```
+
+```{r}
+y_smoker %>% get_correlation(formula = charges ~ age)
+```
+```{r}
+n_smoker %>% get_correlation(formula = charges ~ age)
+```
+```{r}
+y_smoker %>% get_correlation(formula = charges ~ bmi)
+```
+
+```{r}
+n_smoker %>% get_correlation(formula = charges ~ bmi)
+```
+
+The positive sign indicates a positive correlation. It shows the highest correlation(0.806) when it is a smoker and when x is bmi.
+
+
+```{r}
+
+# if smoker, when x is age
+mod3 <- lm(charges ~ age, data = y_smoker)
+grid3 <- y_smoker %>%
+  data_grid(age)
+
+grid3 <- grid3 %>%
+  add_predictions(mod3)
+
+ggplot(data = y_smoker) +
+  geom_point(aes(x = age, y = charges))+
+  geom_line(aes(x = age, y = pred), data = grid3, colour = "red", size = 1)
+```
+
+```{r}
+
+# if non-smoker, when x is age
+mod4 <- lm(charges ~ age, data = n_smoker)
+grid4 <- n_smoker %>%
+  data_grid(age)
+
+grid4 <- grid4 %>%
+  add_predictions(mod4)
+
+ggplot(data = n_smoker) +
+  geom_point(aes(x = age, y = charges))+
+  geom_line(aes(x = age, y = pred), data = grid4, colour = "red", size = 1)
+```
+
+```{r}
+# if smoker, when x is bmi
+mod5 <- lm(charges ~ bmi, data = y_smoker)
+grid5 <- y_smoker %>%
+  data_grid(bmi)
+
+grid5 <- grid5 %>%
+  add_predictions(mod5)
+
+ggplot(data = y_smoker) +
+  geom_point(aes(x = bmi, y = charges))+
+  geom_line(aes(x = bmi, y = pred), data = grid5, colour = "red", size = 1)
+```
+
+```{r}
+# if non-smoker, when x is bmi
+mod6 <- lm(charges ~ bmi, data = n_smoker)
+grid6 <- n_smoker %>%
+  data_grid(bmi)
+
+grid6 <- grid6 %>%
+  add_predictions(mod6)
+
+ggplot(data = n_smoker) +
+  geom_point(aes(x = bmi, y = charges))+
+  geom_line(aes(x = bmi, y = pred), data = grid6, colour = "red", size = 1)
+```
+
+Comparing the slope, it can be seen that when the smoker and the x variable are bmi, the value of the premium increases steeply. 
+
+Null hypothesis, H0 : The insurance premiums are not affected by the bmi and smoking.
+
+Alternative hypothesis, HA : The insurance premiums depend on the bmi and smoking.
+
+The null hypothesis H0 assumes that the slope is 0 and that there is no true relationship between bmi, smoking and charges.
+
+The alternative hypothesis HA assumes that the slope is not 0, which means that as the bmi increases and it is smoker, its charges either increases (positive slope) or decreases (negative slope).
+
+```{r}
+# if smoker, when x is bmi
+mod5 %>% get_regression_table()
+```
+
+The p-value of 0 for both the intercept b0 of -13186.576 and the observed fitted slope b1 of 1473.106 suggests that we could reject the hypothesis that there is no relationship between bmi and charges (the null hypothesis) in favour of the hypothesis that there is (the alternative hypothesis).
+
+The two rightmost columns of the regression table (lower_ci and upper_ci) correspond to the endpoints of the 95% confidence interval. We are 95% confident that the true intercept (price of new house) lies in the range (-17228.140, -9145.013) and that the true slope lies in the range (1344.187, 1602.026).
+
+Note that this CI of the slope does not contain 0; this is another indicator that our null hypothesis does not hold; there is indeed a meaningful relationship between bmi and charges when it is smoker.
+
+
+I will also check using summary().
+
+
+```{r}
+# if smoker, when x is age
+summary(mod3)
+```
+
+```{r}
+# if non-smoker, when x is age
+summary(mod4)
+```
+
+```{r}
+# if smoker, when x is bmi
+summary(mod5)
+```
+
+```{r}
+# if non-smoker, when x is bmi
+summary(mod6)
+```
+
+
+Looking at how well each variable explains the insurance premium, which is the y value, through Multiple R-sqaured, it can be seen that when it is smoker, and x is bmi, it shows the highest value at 0.6504.
+
+
+
+Next, assuming that age and bmi interact with each other, we will check what model will come out if we predict the premiums.
+
+```{r}
+# if smoker
+mod7 <- lm(charges ~ age*bmi, data = y_smoker)
+summary(mod7)
+```
+
+```{r}
+# if non-smoker
+mod8 <- lm(charges ~ age*bmi, data = n_smoker)
+summary(mod8)
+```
+
+In conclusion, it can be said that multiple R-squared has the highest explanatory power for y (insurance premium) among the models made so far, assuming that it is smoker, and the age & BMI are interactive.
+
+
+
